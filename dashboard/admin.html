@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DPI Admin Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy: #0D1B2A; --teal: #00B4C6; --red: #E8445A; --green: #2ECC71;
+  --text: #E8EDF2; --subtext: #7A8FA0; --line: rgba(0,180,198,0.15);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--navy); color:var(--text); font-family:'DM Sans',sans-serif; padding:20px; }
+.login-box { max-width:400px; margin:100px auto; background:rgba(30,45,66,0.8); padding:32px; border-radius:12px; }
+.login-box h1 { font-family:'Space Mono',monospace; color:var(--teal); margin-bottom:24px; }
+.login-box input { width:100%; padding:10px 14px; margin-bottom:14px; background:rgba(0,0,0,0.3); border:1px solid var(--line); color:var(--text); border-radius:6px; font-family:'DM Sans',sans-serif; }
+.login-box button { width:100%; padding:10px; background:var(--teal); color:var(--navy); border:none; border-radius:6px; font-weight:700; cursor:pointer; font-family:'Space Mono',monospace; }
+.admin-panel { display:none; }
+.header { display:flex; justify-content:space-between; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--line); }
+.header h1 { font-family:'Space Mono',monospace; color:var(--teal); font-size:18px; }
+.tabs { display:flex; gap:12px; margin-bottom:20px; }
+.tab { padding:8px 16px; background:rgba(30,45,66,0.6); border:1px solid var(--line); border-radius:6px; cursor:pointer; font-family:'Space Mono',monospace; font-size:12px; }
+.tab.active { background:var(--teal); color:var(--navy); border-color:var(--teal); }
+.table-wrap { background:rgba(30,45,66,0.7); border:1px solid var(--line); border-radius:8px; overflow:auto; max-height:600px; }
+table { width:100%; border-collapse:collapse; }
+th { font-family:'Space Mono',monospace; font-size:10px; text-transform:uppercase; padding:12px; text-align:left; border-bottom:1px solid var(--line); color:var(--subtext); position:sticky; top:0; background:rgba(30,45,66,0.95); }
+td { padding:10px 12px; font-size:13px; border-bottom:1px solid rgba(0,180,198,0.06); }
+.btn { padding:6px 12px; background:var(--teal); color:var(--navy); border:none; border-radius:4px; cursor:pointer; font-size:11px; font-weight:700; }
+.btn-del { background:var(--red); color:#fff; }
+.modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); align-items:center; justify-content:center; }
+.modal.open { display:flex; }
+.modal-content { background:rgba(30,45,66,0.95); padding:24px; border-radius:12px; max-width:500px; width:90%; }
+.modal-content h2 { margin-bottom:16px; font-family:'Space Mono',monospace; color:var(--teal); }
+.modal-content input, .modal-content select { width:100%; padding:8px 12px; margin-bottom:10px; background:rgba(0,0,0,0.3); border:1px solid var(--line); color:var(--text); border-radius:4px; }
+.modal-content .btns { display:flex; gap:10px; margin-top:16px; }
+</style>
+</head>
+<body>
+
+<div class="login-box" id="login-box">
+  <h1>Admin Login</h1>
+  <input type="text" id="username" placeholder="Username">
+  <input type="password" id="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+  <p id="login-error" style="color:var(--red);margin-top:10px;font-size:12px"></p>
+</div>
+
+<div class="admin-panel" id="admin-panel">
+  <div class="header">
+    <h1>DPI Admin Panel</h1>
+    <button class="btn" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('apps')">Apps</div>
+    <div class="tab" onclick="switchTab('headcount')">Headcount</div>
+  </div>
+
+  <div id="apps-tab">
+    <button class="btn" onclick="openModal('app')" style="margin-bottom:12px">+ Add App</button>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>App ID</th><th>App Name</th><th>Assignment Group</th><th>Deploy Type</th><th>Segment</th><th>Actions</th></tr></thead>
+        <tbody id="apps-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="headcount-tab" style="display:none">
+    <button class="btn" onclick="openModal('headcount')" style="margin-bottom:12px">+ Add Headcount</button>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>App ID</th><th>Release HC</th><th>Non-Release HC</th><th>Total HC</th><th>Actions</th></tr></thead>
+        <tbody id="hc-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <h2 id="modal-title">Add/Edit</h2>
+    <div id="modal-fields"></div>
+    <div class="btns">
+      <button class="btn" onclick="saveModal()">Save</button>
+      <button class="btn btn-del" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let token = null;
+let currentTab = 'apps';
+let editingId = null;
+
+async function login() {
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  const res = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username, password})
+  });
+  if (res.ok) {
+    const data = await res.json();
+    token = data.access_token;
+    document.getElementById('login-box').style.display = 'none';
+    document.getElementById('admin-panel').style.display = 'block';
+    loadData();
+  } else {
+    document.getElementById('login-error').textContent = 'Invalid credentials';
+  }
+}
+
+function logout() {
+  token = null;
+  document.getElementById('login-box').style.display = 'block';
+  document.getElementById('admin-panel').style.display = 'none';
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('apps-tab').style.display = tab === 'apps' ? 'block' : 'none';
+  document.getElementById('headcount-tab').style.display = tab === 'headcount' ? 'block' : 'none';
+  loadData();
+}
+
+async function loadData() {
+  if (currentTab === 'apps') {
+    const res = await fetch('/api/admin/apps', {headers: {'Authorization': `Bearer ${token}`}});
+    const apps = await res.json();
+    const tbody = document.getElementById('apps-tbody');
+    tbody.innerHTML = apps.map(a => `
+      <tr>
+        <td>${a.app_id}</td>
+        <td>${a.app_name}</td>
+        <td>${a.assignment_group}</td>
+        <td>${a.deploy_type || ''}</td>
+        <td>${a.segment || ''}</td>
+        <td>
+          <button class="btn" onclick='editApp(${JSON.stringify(a)})'>Edit</button>
+          <button class="btn btn-del" onclick="deleteApp('${a.app_id}')">Delete</button>
+        </td>
+      </tr>
+    `).join('');
+  } else if (currentTab === 'headcount') {
+    const res = await fetch('/api/admin/headcount', {headers: {'Authorization': `Bearer ${token}`}});
+    const hcs = await res.json();
+    const tbody = document.getElementById('hc-tbody');
+    tbody.innerHTML = hcs.map(h => `
+      <tr>
+        <td>${h.app_id}</td>
+        <td>${h.release_hc || 0}</td>
+        <td>${h.non_release_hc || 0}</td>
+        <td>${(h.release_hc || 0) + (h.non_release_hc || 0)}</td>
+        <td>
+          <button class="btn" onclick='editHeadcount(${JSON.stringify(h)})'>Edit</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+}
+
+function openModal(type, data = null) {
+  editingId = data?.app_id || null;
+  const modal = document.getElementById('modal');
+  const title = document.getElementById('modal-title');
+  const fields = document.getElementById('modal-fields');
+  
+  if (type === 'app') {
+    title.textContent = data ? 'Edit App' : 'Add App';
+    fields.innerHTML = `
+      <input id="f-app_id" placeholder="App ID" value="${data?.app_id || ''}" ${data ? 'disabled' : ''}>
+      <input id="f-app_name" placeholder="App Name" value="${data?.app_name || ''}">
+      <input id="f-assignment_group" placeholder="Assignment Group" value="${data?.assignment_group || ''}">
+      <select id="f-deploy_type">
+        <option value="Automated" ${data?.deploy_type === 'Automated' ? 'selected' : ''}>Automated</option>
+        <option value="Manual" ${data?.deploy_type === 'Manual' ? 'selected' : ''}>Manual</option>
+      </select>
+      <select id="f-segment">
+        <option value="FROZEN" ${data?.segment === 'FROZEN' ? 'selected' : ''}>FROZEN</option>
+        <option value="MANUAL-LOW" ${data?.segment === 'MANUAL-LOW' ? 'selected' : ''}>MANUAL-LOW</option>
+        <option value="AUTO-BATCHING" ${data?.segment === 'AUTO-BATCHING' ? 'selected' : ''}>AUTO-BATCHING</option>
+        <option value="PERFORMING" ${data?.segment === 'PERFORMING' ? 'selected' : ''}>PERFORMING</option>
+      </select>
+    `;
+  } else if (type === 'headcount') {
+    title.textContent = data ? 'Edit Headcount' : 'Add Headcount';
+    fields.innerHTML = `
+      <input id="f-app_id" placeholder="App ID" value="${data?.app_id || ''}" ${data ? 'disabled' : ''}>
+      <input id="f-release_hc" type="number" placeholder="Release HC" value="${data?.release_hc || 0}">
+      <input id="f-non_release_hc" type="number" placeholder="Non-Release HC" value="${data?.non_release_hc || 0}">
+    `;
+  }
+  
+  modal.classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+async function saveModal() {
+  if (currentTab === 'apps') {
+    const body = {
+      app_id: document.getElementById('f-app_id').value,
+      app_name: document.getElementById('f-app_name').value,
+      assignment_group: document.getElementById('f-assignment_group').value,
+      deploy_type: document.getElementById('f-deploy_type').value,
+      segment: document.getElementById('f-segment').value,
+      prod_releases_expected: 1,
+    };
+    const url = editingId ? `/api/admin/apps/${editingId}` : '/api/admin/apps';
+    const method = editingId ? 'PUT' : 'POST';
+    await fetch(url, {method, headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  } else if (currentTab === 'headcount') {
+    const body = {
+      app_id: document.getElementById('f-app_id').value,
+      release_hc: parseInt(document.getElementById('f-release_hc').value) || 0,
+      non_release_hc: parseInt(document.getElementById('f-non_release_hc').value) || 0,
+    };
+    await fetch('/api/admin/headcount', {method: 'POST', headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  }
+  
+  closeModal();
+  loadData();
+}
+
+function editApp(data) { openModal('app', data); }
+function editHeadcount(data) { openModal('headcount', data); }
+
+async function deleteApp(app_id) {
+  if (!confirm(`Delete ${app_id}?`)) return;
+  await fetch(`/api/admin/apps/${app_id}`, {method: 'DELETE', headers: {'Authorization': `Bearer ${token}`}});
+  loadData();
+}
+</script>
+</body>
+</html>
