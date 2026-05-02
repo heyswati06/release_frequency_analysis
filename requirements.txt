@@ -1,0 +1,12 @@
+fastapi==0.111.0
+uvicorn==0.29.0
+pandas==2.2.2
+openpyxl==3.1.2
+requests==2.31.0
+apscheduler==3.10.4
+python-dotenv==1.0.1
+pymongo==4.6.3
+GitPython==3.1.43
+passlib==1.7.4
+python-jose[cryptography]==3.3.0
+bcrypt==4.1.2
